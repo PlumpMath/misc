@@ -1,0 +1,7 @@
+#+TITLE:   README
+#+AUTHOR:  Kelvin Hu
+#+EMAIL:   ini.kelvin@gmail.com
+#+DATE:    2014-03-06 Thu
+
+
+My personal misc code.
