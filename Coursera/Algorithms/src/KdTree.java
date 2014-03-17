@@ -1,49 +1,38 @@
-import java.awt.Color;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 public class KdTree {
-    private Node root;
-    private int size;
+    private static final RectHV BOARD = new RectHV(0, 0, 1, 1);
 
-    private static class Node implements Comparable<Node> {
+    private Node root = null;
+    private int size = 0;
+
+    private enum SplitType {
+        VERTICAL,
+        HORIZONTAL
+    }
+
+    private static class Node {
         private Point2D point;
-        private int height;
-        private Node left;
-        private Node right;
+        private RectHV rect;
+        private SplitType type;
 
-        private Node(Point2D point) {
+        private Node left = null;
+        private Node right = null;
+
+        private Node(Point2D point, RectHV rect, SplitType type) {
             this.point = point;
-            height = 1;
-            left = null;
-            right = null;
-        }
-
-        public boolean isVertical() {
-            return height % 2 != 0;
-        }
-
-        public int compareTo(Node that) {
-            if (point.x() == that.point.x() && point.y() == that.point.y())
-                return 0;
-
-            if (that.isVertical()) {
-                if (point.x() < that.point.x())
-                    return -1;
-                else
-                    return +1;
-            } else {
-                if (point.y() < that.point.y())
-                    return -1;
-                else
-                    return +1;
-            }
+            this.rect = rect;
+            this.type = type;
         }
     }
 
-    public KdTree() {
-        root = null;
-        size = 0;
+    private static class NearestNodeHolder {
+        private Node nearest;
+
+        private NearestNodeHolder(Node nearest) {
+            this.nearest = nearest;
+        }
     }
 
     public boolean isEmpty() {
@@ -56,24 +45,36 @@ public class KdTree {
 
     public void insert(Point2D p) {
         if (root == null) {
-            root = new Node(p);
+            root = new Node(p, BOARD, SplitType.VERTICAL);
             size++;
             return;
         }
 
         Node parent = root;
         Node child;
-        Node n = new Node(p);
         boolean onLeft;
-        for (;;) {
-            if (n.compareTo(parent) < 0) {
-                child = parent.left;
-                onLeft = true;
-            } else if (n.compareTo(parent) > 0) {
-                child = parent.right;
-                onLeft = false;
-            } else {
+        while (true) {
+            if (p.equals(parent.point)) {
+                parent.point = p;
                 return;
+            }
+
+            if (parent.type == SplitType.HORIZONTAL) {
+                if (p.y() < parent.point.y()) {
+                    child = parent.left;
+                    onLeft = true;
+                } else {
+                    child = parent.right;
+                    onLeft = false;
+                }
+            } else {
+                if (p.x() < parent.point.x()) {
+                    child = parent.left;
+                    onLeft = true;
+                } else {
+                    child = parent.right;
+                    onLeft = false;
+                }
             }
 
             if (child == null)
@@ -83,12 +84,29 @@ public class KdTree {
         }
 
         size++;
-        n.height = parent.height + 1;
-        if (onLeft) {
-            parent.left = n;
+
+        RectHV rect;
+        SplitType type;
+        if (parent.type == SplitType.HORIZONTAL) {
+            if (onLeft)
+                rect = new RectHV(parent.rect.xmin(), parent.rect.ymin(), parent.rect.xmax(), parent.point.y());
+            else
+                rect = new RectHV(parent.rect.xmin(), parent.point.y(), parent.rect.xmax(), parent.rect.ymax());
+
+            type = SplitType.VERTICAL;
         } else {
-            parent.right = n;
+            if (onLeft)
+                rect = new RectHV(parent.rect.xmin(), parent.rect.ymin(), parent.point.x(), parent.rect.ymax());
+            else
+                rect = new RectHV(parent.point.x(), parent.rect.ymin(), parent.rect.xmax(), parent.rect.ymax());
+
+            type = SplitType.HORIZONTAL;
         }
+
+        if (onLeft)
+            parent.left = new Node(p, rect, type);
+        else
+            parent.right = new Node(p, rect, type);
     }
 
     public boolean contains(Point2D p) {
@@ -97,14 +115,20 @@ public class KdTree {
 
         Node parent = root;
         Node child;
-        Node n = new Node(p);
-        for (;;) {
-            if (n.compareTo(parent) < 0) {
-                child = parent.left;
-            } else if (n.compareTo(parent) > 0) {
-                child = parent.right;
-            } else {
+        while (true) {
+            if (p.equals(parent.point))
                 return true;
+
+            if (parent.type == SplitType.HORIZONTAL) {
+                if (p.y() < parent.point.y())
+                    child = parent.left;
+                else
+                    child = parent.right;
+            } else {
+                if (p.x() < parent.point.x())
+                    child = parent.left;
+                else
+                    child = parent.right;
             }
 
             if (child == null)
@@ -115,118 +139,89 @@ public class KdTree {
     }
 
     public void draw() {
-        RectHV rect = new RectHV(0, 0, 1, 1);
-        draw(root, rect);
+        draw(root);
     }
 
-    private void draw(Node n, RectHV rect) {
+    private void draw(Node n) {
         if (n == null)
             return;
 
-        StdDraw.setPenColor(Color.black);
+        StdDraw.setPenColor(StdDraw.BLACK);
+        StdDraw.setPenRadius(0.01);
         n.point.draw();
-        RectHV left, right;
-        if (n.isVertical()) {
-            StdDraw.setPenColor(Color.red);
-            StdDraw.line(n.point.x(), rect.ymin(), n.point.x(), rect.ymax());
 
-            left = new RectHV(rect.xmin(), rect.ymin(), n.point.x(), rect.ymax());
-            right = new RectHV(n.point.x(), rect.ymin(), rect.xmax(), rect.ymax());
+        StdDraw.setPenRadius();
+        if (n.type == SplitType.HORIZONTAL) {
+            StdDraw.setPenColor(StdDraw.BLUE);
+            StdDraw.line(n.rect.xmin(), n.point.y(), n.rect.xmax(), n.point.y());
         } else {
-            StdDraw.setPenColor(Color.blue);
-            StdDraw.line(rect.xmin(), n.point.y(), rect.xmax(), n.point.y());
-
-            left = new RectHV(rect.xmin(), rect.ymin(), rect.xmax(), n.point.y());
-            right = new RectHV(rect.xmin(), n.point.y(), rect.xmax(), rect.ymax());
+            StdDraw.setPenColor(StdDraw.RED);
+            StdDraw.line(n.point.x(), n.rect.ymin(), n.point.x(), n.rect.ymax());
         }
 
         if (n.left != null)
-            draw(n.left, left);
+            draw(n.left);
         if (n.right != null)
-            draw(n.right, right);
+            draw(n.right);
     }
 
     public Iterable<Point2D> range(RectHV rect) {
-        List<Point2D> list = new ArrayList<Point2D>(size());
-        range(root, rect, list, new RectHV(0, 0, 1, 1));
-        return list;
+        Set<Point2D> set = new HashSet<Point2D>();
+        range(root, rect, set);
+        return set;
     }
 
-    private void range(Node n, RectHV rect, List<Point2D> list, RectHV srcRect) {
-        if (n == null)
+    private void range(Node n, RectHV rect, Set<Point2D> set) {
+        if (n == null || !rect.intersects(n.rect))
             return;
 
         if (rect.contains(n.point))
-            list.add(n.point);
+            set.add(n.point);
 
-        RectHV left, right;
-        if (n.isVertical()) {
-            left = new RectHV(srcRect.xmin(), srcRect.ymin(), n.point.x(), srcRect.ymax());
-            right = new RectHV(n.point.x(), srcRect.ymin(), srcRect.xmax(), srcRect.ymax());
-            if (rect.intersects(left))
-                range(n.left, rect, list, left);
-            if (rect.intersects(right))
-                range(n.right, rect, list, right);
-        } else {
-            left = new RectHV(srcRect.xmin(), srcRect.ymin(), srcRect.xmax(), n.point.y());
-            right = new RectHV(srcRect.xmin(), n.point.y(), srcRect.xmax(), srcRect.ymax());
-            if (rect.intersects(left))
-                range(n.left, rect, list, left);
-            if (rect.intersects(right))
-                range(n.right, rect, list, right);
-        }
+        range(n.left, rect, set);
+        range(n.right, rect, set);
     }
 
     public Point2D nearest(Point2D p) {
         if (isEmpty())
             return null;
 
-        return nearest(root, p, new RectHV(0, 0, 1, 1), root.point);
+        NearestNodeHolder holder = new NearestNodeHolder(root);
+        nearest(root, p, holder);
+
+        return holder.nearest.point;
     }
 
-    private Point2D nearest(Node n, Point2D p, RectHV rect, Point2D current) {
+    private void nearest(Node n, Point2D p, NearestNodeHolder holder) {
         if (n == null)
-            return current;
+            return;
 
-        Point2D nearest = n.point;
-        double nearestSquareDistance = p.distanceSquaredTo(nearest);
-        Point2D left, right;
-        RectHV leftRect, rightRect;
-        if (n.isVertical()) {
-            leftRect = new RectHV(rect.xmin(), rect.ymin(), n.point.x(), rect.ymax());
-            rightRect = new RectHV(n.point.x(), rect.ymin(), rect.xmax(), rect.ymax());
-        } else {
-            leftRect = new RectHV(rect.xmin(), rect.ymin(), rect.xmax(), n.point.y());
-            rightRect = new RectHV(rect.xmin(), n.point.y(), rect.xmax(), rect.ymax());
-        }
+        double currentSquareDistance = p.distanceSquaredTo(holder.nearest.point);
 
-        if (leftRect.contains(p)) {
-            left = nearest(n.left, p, leftRect, nearest);
-            if (!left.equals(nearest) && p.distanceSquaredTo(left) < nearestSquareDistance) {
-                nearest = left;
-                nearestSquareDistance = p.distanceSquaredTo(nearest);
-            }
+        if (currentSquareDistance < n.rect.distanceSquaredTo(p))
+            return;
 
-            if (rightRect.distanceSquaredTo(p) < nearestSquareDistance) {
-                right = nearest(n.right, p, rightRect, nearest);
-                if (!right.equals(nearest) && p.distanceSquaredTo(right) < nearestSquareDistance)
-                    nearest = right;
+        if (currentSquareDistance > n.point.distanceSquaredTo(p))
+            holder.nearest = n;
+
+
+        if (n.type == SplitType.HORIZONTAL) {
+            if (p.y() < n.point.y()) {
+                nearest(n.left, p, holder);
+                nearest(n.right, p, holder);
+            } else {
+                nearest(n.right, p, holder);
+                nearest(n.left, p, holder);
             }
         } else {
-            right = nearest(n.right, p, rightRect, nearest);
-            if (!right.equals(nearest) && p.distanceSquaredTo(right) < nearestSquareDistance) {
-                nearest = right;
-                nearestSquareDistance = p.distanceSquaredTo(nearest);
-            }
-
-            if (leftRect.distanceSquaredTo(p) < nearestSquareDistance) {
-                left = nearest(n.left, p, leftRect, nearest);
-                if (!left.equals(nearest) && p.distanceSquaredTo(left) < nearestSquareDistance)
-                    nearest = left;
+            if (p.x() < n.point.x()) {
+                nearest(n.left, p, holder);
+                nearest(n.right, p, holder);
+            } else {
+                nearest(n.right, p, holder);
+                nearest(n.left, p, holder);
             }
         }
-
-        return nearest;
     }
 
     public static void main(String[] args) {
